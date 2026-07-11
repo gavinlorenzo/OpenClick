@@ -16,9 +16,9 @@ public sealed class HotkeyManager : IDisposable
     private readonly LowLevelProc _proc;
     private readonly IntPtr _hookHandle;
 
-    // Tracks the vk of the physically-held main key so we fire only once per
-    // physical press (no refire until the matching key-up is observed).
-    private int _downVkCode;
+    // Tracks all physically-held (non-modifier) VKs so we fire only once per
+    // physical press (no refire on OS auto-repeat until the matching key-up).
+    private readonly HashSet<int> _downVkCodes = new();
     private bool _disposed;
 
     public bool Suspended { get; set; }
@@ -30,18 +30,24 @@ public sealed class HotkeyManager : IDisposable
         _proc = HookCallback;
         IntPtr moduleHandle = NativeMethods.GetModuleHandle(null);
         _hookHandle = NativeMethods.SetWindowsHookEx(NativeMethods.WH_KEYBOARD_LL, _proc, moduleHandle, 0);
+        if (_hookHandle == IntPtr.Zero)
+        {
+            throw new System.ComponentModel.Win32Exception(System.Runtime.InteropServices.Marshal.GetLastWin32Error());
+        }
     }
 
     public void Register(string actionId, HotkeyCombo combo)
     {
-        if (combo.IsEmpty)
-        {
-            return;
-        }
-
         lock (_lock)
         {
-            _combos[actionId] = combo;
+            if (combo.IsEmpty)
+            {
+                _combos.Remove(actionId);
+            }
+            else
+            {
+                _combos[actionId] = combo;
+            }
         }
     }
 
@@ -88,12 +94,10 @@ public sealed class HotkeyManager : IDisposable
         }
 
         // Fire once per physical press: ignore auto-repeat while the same key is down.
-        if (_downVkCode == vkCode)
+        if (!_downVkCodes.Add(vkCode))
         {
             return;
         }
-
-        _downVkCode = vkCode;
 
         bool ctrl = IsKeyDown(NativeMethods.VK_CONTROL);
         bool shift = IsKeyDown(NativeMethods.VK_SHIFT);
@@ -120,7 +124,14 @@ public sealed class HotkeyManager : IDisposable
 
         if (matchedActionId != null)
         {
-            HotkeyPressed?.Invoke(matchedActionId);
+            try
+            {
+                HotkeyPressed?.Invoke(matchedActionId);
+            }
+            catch
+            {
+                // Never let a subscriber exception propagate across the native hook boundary.
+            }
         }
     }
 
@@ -134,10 +145,7 @@ public sealed class HotkeyManager : IDisposable
         }
 
         int vkCode = (int)info.vkCode;
-        if (_downVkCode == vkCode)
-        {
-            _downVkCode = 0;
-        }
+        _downVkCodes.Remove(vkCode);
     }
 
     private static bool IsPureModifierKey(int vkCode) =>

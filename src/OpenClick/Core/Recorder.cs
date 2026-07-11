@@ -21,6 +21,10 @@ public sealed class Recorder : IDisposable
     private IntPtr _keyboardHook = IntPtr.Zero;
 
     private long? _lastKeptMoveTimeMs;
+
+    // The most recent MouseMove dropped by the 10ms throttle, kept so the cursor's
+    // final resting position is not lost (flushed before non-move events / on stop).
+    private MacroEvent? _pendingMove;
     private bool _disposed;
 
     public bool IsRecording { get; private set; }
@@ -44,13 +48,27 @@ public sealed class Recorder : IDisposable
         }
 
         _lastKeptMoveTimeMs = null;
+        _pendingMove = null;
 
         _mouseProc = MouseHookCallback;
         _keyboardProc = KeyboardHookCallback;
 
         IntPtr moduleHandle = NativeMethods.GetModuleHandle(null);
         _mouseHook = NativeMethods.SetWindowsHookEx(NativeMethods.WH_MOUSE_LL, _mouseProc, moduleHandle, 0);
+        if (_mouseHook == IntPtr.Zero)
+        {
+            int error = Marshal.GetLastWin32Error();
+            Unhook();
+            throw new System.ComponentModel.Win32Exception(error);
+        }
+
         _keyboardHook = NativeMethods.SetWindowsHookEx(NativeMethods.WH_KEYBOARD_LL, _keyboardProc, moduleHandle, 0);
+        if (_keyboardHook == IntPtr.Zero)
+        {
+            int error = Marshal.GetLastWin32Error();
+            Unhook();
+            throw new System.ComponentModel.Win32Exception(error);
+        }
 
         _stopwatch.Restart();
         IsRecording = true;
@@ -65,6 +83,7 @@ public sealed class Recorder : IDisposable
 
         lock (_lock)
         {
+            FlushPendingMoveLocked();
             return new MacroScript { Events = new List<MacroEvent>(_events) };
         }
     }
@@ -192,16 +211,32 @@ public sealed class Recorder : IDisposable
 
     private void MaybeAppendMove(int x, int y, long timeMs)
     {
+        var move = new MacroEvent
+        {
+            TimeMs = timeMs,
+            Type = MacroEventType.MouseMove,
+            X = x,
+            Y = y,
+        };
+
         if (_lastKeptMoveTimeMs is null || timeMs - _lastKeptMoveTimeMs.Value >= 10)
         {
-            Append(new MacroEvent
+            lock (_lock)
             {
-                TimeMs = timeMs,
-                Type = MacroEventType.MouseMove,
-                X = x,
-                Y = y,
-            });
+                _pendingMove = null;
+            }
+
+            Append(move);
             _lastKeptMoveTimeMs = timeMs;
+        }
+        else
+        {
+            // Throttled: remember the latest dropped move so the cursor's final
+            // resting position can be flushed before the next non-move event.
+            lock (_lock)
+            {
+                _pendingMove = move;
+            }
         }
     }
 
@@ -210,11 +245,36 @@ public sealed class Recorder : IDisposable
         int count;
         lock (_lock)
         {
+            if (evt.Type != MacroEventType.MouseMove)
+            {
+                FlushPendingMoveLocked();
+            }
+
             _events.Add(evt);
             count = _events.Count;
         }
 
-        EventCaptured?.Invoke(count);
+        try
+        {
+            EventCaptured?.Invoke(count);
+        }
+        catch
+        {
+            // Never let a subscriber exception propagate across the native hook boundary.
+        }
+    }
+
+    /// <summary>Appends the pending throttled move (if newer than the last kept move), then clears it. Caller must hold _lock.</summary>
+    private void FlushPendingMoveLocked()
+    {
+        if (_pendingMove is { } pending &&
+            (_lastKeptMoveTimeMs is null || pending.TimeMs > _lastKeptMoveTimeMs.Value))
+        {
+            _events.Add(pending);
+            _lastKeptMoveTimeMs = pending.TimeMs;
+        }
+
+        _pendingMove = null;
     }
 
     public void Dispose()

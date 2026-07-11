@@ -49,16 +49,11 @@ public sealed class Player : IDisposable
         Thread? threadToJoin;
         lock (_lock)
         {
-            if (!_isPlaying)
-            {
-                return;
-            }
-
             _stopRequested = true;
             threadToJoin = _thread;
         }
 
-        if (threadToJoin != null && Thread.CurrentThread != threadToJoin)
+        if (threadToJoin != null && threadToJoin.IsAlive && Thread.CurrentThread != threadToJoin)
         {
             threadToJoin.Join(2000);
         }
@@ -69,56 +64,70 @@ public sealed class Player : IDisposable
         NativeMethods.timeBeginPeriod(1);
         try
         {
-            PlaybackStarted?.Invoke();
-
-            bool infinite = repeatCount == 0;
-            int repeatsDone = 0;
-
-            while (infinite || repeatsDone < repeatCount)
+            try
             {
-                var sw = Stopwatch.StartNew();
+                PlaybackStarted?.Invoke();
 
-                foreach (var evt in script.Events)
+                bool infinite = repeatCount == 0;
+                int repeatsDone = 0;
+
+                while (infinite || repeatsDone < repeatCount)
                 {
-                    double due = evt.TimeMs / speed;
+                    var sw = Stopwatch.StartNew();
 
-                    while (sw.ElapsedMilliseconds < due)
+                    foreach (var evt in script.Events)
                     {
+                        double due = evt.TimeMs / speed;
+
+                        while (sw.ElapsedMilliseconds < due)
+                        {
+                            if (_stopRequested)
+                            {
+                                return;
+                            }
+
+                            double remaining = due - sw.ElapsedMilliseconds;
+                            int sleepMs = (int)Math.Max(0, Math.Min(15, remaining));
+                            Thread.Sleep(sleepMs);
+                        }
+
                         if (_stopRequested)
                         {
                             return;
                         }
 
-                        double remaining = due - sw.ElapsedMilliseconds;
-                        int sleepMs = (int)Math.Max(0, Math.Min(15, remaining));
-                        Thread.Sleep(sleepMs);
+                        Emit(evt);
                     }
 
-                    if (_stopRequested)
+                    repeatsDone++;
+                    RepeatCompleted?.Invoke(repeatsDone);
+
+                    if (infinite || repeatsDone < repeatCount)
                     {
-                        return;
-                    }
-
-                    Emit(evt);
-                }
-
-                repeatsDone++;
-                RepeatCompleted?.Invoke(repeatsDone);
-
-                if (infinite || repeatsDone < repeatCount)
-                {
-                    if (!SleepChunked(250))
-                    {
-                        return;
+                        if (!SleepChunked(250))
+                        {
+                            return;
+                        }
                     }
                 }
+            }
+            catch
+            {
+                // Never let a subscriber (or emit) exception kill the process from this background thread.
             }
         }
         finally
         {
             NativeMethods.timeEndPeriod(1);
             _isPlaying = false;
-            PlaybackFinished?.Invoke();
+            try
+            {
+                PlaybackFinished?.Invoke();
+            }
+            catch
+            {
+                // Never let a subscriber exception kill the process from this background thread.
+            }
         }
     }
 
