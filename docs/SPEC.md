@@ -358,6 +358,11 @@ Follow standard WinForms look; clean, compact, resizable-off (FixedSingle), ~540
 - CheckBox "Always on top".
 - Link label to GitHub repo.
 
+**Main window layout**
+- The main window is resizable and maximizable, with a minimum size that keeps the original 540×460 client layout usable.
+- Full-width sections and the right-hand action controls are anchored to the tab page so extra window space is used instead of leaving the controls compressed in a fixed-size corner.
+- Tab pages support scrolling as a fallback for display scaling or work areas that cannot show the full layout.
+
 **Wiring rules**
 - One shared `ClickEngine`. Hotkey "toggle-clicker": if engine running → Stop; else start with ForegroundTarget (Tab 1 settings). Background Start button uses `MultiTarget`. Starting one while the other runs: Stop first, then start new.
 - Hold mode: when checkbox on, HoldClickMonitor.Enabled = true with TriggerButton = selected click button; HoldStarted → engine.Start (foreground), HoldEnded → engine.Stop. Start/Stop buttons disabled while hold mode is on (label explains).

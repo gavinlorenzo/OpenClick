@@ -26,10 +26,10 @@ public sealed class MainForm : Form
 
     // ---- Tab 1: Autoclick ----
     private readonly TabControl _tabControl = new() { Dock = DockStyle.Fill };
-    private readonly TabPage _tabAutoclick = new("Autoclick");
-    private readonly TabPage _tabRecord = new("Record && Playback");
-    private readonly TabPage _tabBackground = new("Background && Multiclick");
-    private readonly TabPage _tabSettings = new("Settings");
+    private readonly TabPage _tabAutoclick = new("Autoclick") { AutoScroll = true };
+    private readonly TabPage _tabRecord = new("Record && Playback") { AutoScroll = true };
+    private readonly TabPage _tabBackground = new("Background && Multiclick") { AutoScroll = true };
+    private readonly TabPage _tabSettings = new("Settings") { AutoScroll = true };
 
     private readonly NumericUpDown _numHours = new() { Minimum = 0, Maximum = 23, Width = 50 };
     private readonly NumericUpDown _numMinutes = new() { Minimum = 0, Maximum = 59, Width = 50 };
@@ -96,12 +96,16 @@ public sealed class MainForm : Form
     public MainForm()
     {
         Text = "OpenClick";
-        FormBorderStyle = FormBorderStyle.FixedSingle;
-        MaximizeBox = false;
+        FormBorderStyle = FormBorderStyle.Sizable;
+        MaximizeBox = true;
         MinimizeBox = true;
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(540, 460);
         Font = new Font("Segoe UI", 9f);
+        ClientSize = new Size(540, 460);
+        // Keep the original layout usable while allowing users to give it more room.
+        // MinimumSize is an outer-window size, so use the calculated size after setting
+        // ClientSize to preserve the full designed client area.
+        MinimumSize = Size;
 
         BuildAutoclickTab();
         BuildRecordTab();
@@ -137,7 +141,12 @@ public sealed class MainForm : Form
 
     private void BuildAutoclickTab()
     {
-        GroupBox grpInterval = new() { Text = "Click interval", Bounds = new Rectangle(10, 10, 512, 90) };
+        GroupBox grpInterval = new()
+        {
+            Text = "Click interval",
+            Bounds = new Rectangle(10, 10, 512, 90),
+            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+        };
         Label lblHours = new() { Text = "Hours", AutoSize = true, Location = new Point(10, 27) };
         _numHours.Location = new Point(60, 24);
         Label lblMinutes = new() { Text = "Mins", AutoSize = true, Location = new Point(125, 27) };
@@ -155,7 +164,12 @@ public sealed class MainForm : Form
             _chkRandomOffset, _numRandomOffsetMs, lblOffsetMs,
         });
 
-        GroupBox grpOptions = new() { Text = "Click options", Bounds = new Rectangle(10, 108, 512, 80) };
+        GroupBox grpOptions = new()
+        {
+            Text = "Click options",
+            Bounds = new Rectangle(10, 108, 512, 80),
+            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+        };
         Label lblButton = new() { Text = "Mouse button:", AutoSize = true, Location = new Point(10, 27) };
         _cboButton.Location = new Point(105, 24);
         _cboButton.Items.AddRange(new object[] { "Left", "Right", "Middle" });
@@ -172,7 +186,12 @@ public sealed class MainForm : Form
         Label lblTimes = new() { Text = "times", AutoSize = true, Location = new Point(160, 52) };
         grpRepeat.Controls.AddRange(new Control[] { _radRepeatUntilStopped, _radRepeatCount, _numRepeatCount, lblTimes });
 
-        GroupBox grpPosition = new() { Text = "Cursor position", Bounds = new Rectangle(270, 196, 252, 120) };
+        GroupBox grpPosition = new()
+        {
+            Text = "Cursor position",
+            Bounds = new Rectangle(270, 196, 252, 120),
+            Anchor = AnchorStyles.Top | AnchorStyles.Right,
+        };
         _radPosCurrent.Location = new Point(10, 24);
         _radPosFixed.Location = new Point(10, 52);
         Label lblX = new() { Text = "X:", AutoSize = true, Location = new Point(25, 80) };
@@ -184,18 +203,30 @@ public sealed class MainForm : Form
 
         _btnStart.Bounds = new Rectangle(10, 328, 246, 40);
         _btnStop.Bounds = new Rectangle(276, 328, 246, 40);
+        _btnStart.Anchor = AnchorStyles.Top | AnchorStyles.Left;
+        _btnStop.Anchor = AnchorStyles.Top | AnchorStyles.Right;
 
         _tabAutoclick.Controls.AddRange(new Control[] { grpInterval, grpOptions, grpRepeat, grpPosition, _btnStart, _btnStop });
     }
 
     private void BuildRecordTab()
     {
-        GroupBox grpRecording = new() { Text = "Recording", Bounds = new Rectangle(10, 10, 512, 65) };
+        GroupBox grpRecording = new()
+        {
+            Text = "Recording",
+            Bounds = new Rectangle(10, 10, 512, 65),
+            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+        };
         _btnRecordToggle.Bounds = new Rectangle(10, 24, 170, 28);
         _lblEventCount.Location = new Point(195, 30);
         grpRecording.Controls.AddRange(new Control[] { _btnRecordToggle, _lblEventCount });
 
-        GroupBox grpPlayback = new() { Text = "Playback", Bounds = new Rectangle(10, 85, 512, 130) };
+        GroupBox grpPlayback = new()
+        {
+            Text = "Playback",
+            Bounds = new Rectangle(10, 85, 512, 130),
+            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+        };
         Label lblSpeed = new() { Text = "Speed:", AutoSize = true, Location = new Point(10, 30) };
         _cboSpeed.Location = new Point(65, 27);
         _cboSpeed.Items.AddRange(new object[] { "0.25x", "0.5x", "1x", "2x", "4x" });
@@ -210,7 +241,12 @@ public sealed class MainForm : Form
             lblSpeed, _cboSpeed, lblRepeat, _numRepeatPlayback, lblRepeatNote, _btnPlayToggle, _lblPlaybackProgress,
         });
 
-        GroupBox grpFile = new() { Text = "Macro file", Bounds = new Rectangle(10, 225, 512, 70) };
+        GroupBox grpFile = new()
+        {
+            Text = "Macro file",
+            Bounds = new Rectangle(10, 225, 512, 70),
+            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+        };
         _btnSaveMacro.Bounds = new Rectangle(10, 26, 150, 28);
         _btnLoadMacro.Bounds = new Rectangle(170, 26, 150, 28);
         _lblMacroInfo.Location = new Point(335, 32);
@@ -222,6 +258,7 @@ public sealed class MainForm : Form
     private void BuildBackgroundTab()
     {
         _lvTargets.Bounds = new Rectangle(10, 10, 512, 215);
+        _lvTargets.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
         _lvTargets.Columns.Add("Window", 240);
         _lvTargets.Columns.Add("Class", 120);
         _lvTargets.Columns.Add("Point", 100);
@@ -235,11 +272,14 @@ public sealed class MainForm : Form
             Text = "Background clicks use PostMessage; some apps (games using raw input) ignore them.",
             AutoSize = false,
             Bounds = new Rectangle(10, 266, 512, 32),
+            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
             ForeColor = SystemColors.GrayText,
         };
 
         _btnStartBackground.Bounds = new Rectangle(10, 304, 246, 34);
         _btnStopBackground.Bounds = new Rectangle(276, 304, 246, 34);
+        _btnStartBackground.Anchor = AnchorStyles.Top | AnchorStyles.Left;
+        _btnStopBackground.Anchor = AnchorStyles.Top | AnchorStyles.Right;
 
         _tabBackground.Controls.AddRange(new Control[]
         {

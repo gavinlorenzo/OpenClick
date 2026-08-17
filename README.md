@@ -14,6 +14,7 @@ A lightweight, free, open-source autoclicker for Windows.
 - **Macro record & playback** — record mouse and keyboard, replay with a speed multiplier and repeat count
 - **Background clicking** — send clicks into unfocused windows via `PostMessage`, no focus stealing
 - **Multiclicking** — click several windows, or several points in one window, on every tick
+- **Resizable window** — enlarge the window when display scaling or a smaller laptop screen makes the default layout feel cramped
 - **Persistent settings** — everything is saved between runs
 - **Zero dependencies** — a single small executable, no installers, no runtimes to chase
 
