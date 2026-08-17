@@ -18,6 +18,8 @@ public sealed class MainForm : Form
     private AppSettings _settings = new();
     private MacroScript? _currentScript;
     private EngineMode _engineMode = EngineMode.None;
+    // Hold mode is selected by the checkbox, but only armed by the clicker toggle.
+    private bool _holdModeArmed;
 
     // ---- StatusStrip ----
     private readonly StatusStrip _statusStrip = new();
@@ -318,8 +320,20 @@ public sealed class MainForm : Form
 
         _hotkeyManager.HotkeyPressed += actionId => UiInvoke(() => OnHotkeyPressed(actionId));
 
-        _holdMonitor.HoldStarted += () => UiInvoke(StartForeground);
-        _holdMonitor.HoldEnded += () => UiInvoke(StopEngine);
+        _holdMonitor.HoldStarted += () => UiInvoke(() =>
+        {
+            if (_holdModeArmed)
+            {
+                StartForeground();
+            }
+        });
+        _holdMonitor.HoldEnded += () => UiInvoke(() =>
+        {
+            if (_holdModeArmed)
+            {
+                StopEngine();
+            }
+        });
 
         _recorder.EventCaptured += n => UiInvoke(() =>
         {
@@ -344,11 +358,26 @@ public sealed class MainForm : Form
 
     private void WireControlEvents()
     {
-        _btnStart.Click += (_, _) => StartForeground();
-        _btnStop.Click += (_, _) => StopEngine();
+        _btnStart.Click += (_, _) => ToggleClicker();
+        _btnStop.Click += (_, _) => StopClicker();
         _chkHoldMode.CheckedChanged += (_, _) =>
         {
-            _holdMonitor.Enabled = _chkHoldMode.Checked;
+            if (_chkHoldMode.Checked)
+            {
+                // Selecting hold mode changes how the next clicker start behaves,
+                // but does not arm the mouse hook by itself.
+                if (_engineMode == EngineMode.Foreground)
+                {
+                    StopEngine();
+                }
+            }
+            else
+            {
+                DisarmHoldMode();
+            }
+
+            UpdateButtonLabels();
+            UpdateStatusHotkeyLabel();
             UpdateEngineButtons();
         };
         _cboButton.SelectedIndexChanged += (_, _) => _holdMonitor.TriggerButton = GetSelectedMouseButton();
@@ -511,7 +540,7 @@ public sealed class MainForm : Form
         switch (actionId)
         {
             case "toggle-clicker":
-                if (_engine.IsRunning) StopEngine(); else StartForeground();
+                ToggleClicker();
                 break;
             case "toggle-record":
                 if (_recorder.IsRecording) StopRecording(); else StartRecording();
@@ -525,6 +554,81 @@ public sealed class MainForm : Form
     // ================================================================
     // Engine / recorder / player actions
     // ================================================================
+
+    private void ToggleClicker()
+    {
+        if (_chkHoldMode.Checked)
+        {
+            if (_holdModeArmed)
+            {
+                DisarmHoldMode();
+            }
+            else
+            {
+                ArmHoldMode();
+            }
+
+            return;
+        }
+
+        if (_engine.IsRunning)
+        {
+            StopEngine();
+        }
+        else
+        {
+            StartForeground();
+        }
+    }
+
+    private void StopClicker()
+    {
+        if (_chkHoldMode.Checked)
+        {
+            DisarmHoldMode();
+        }
+        else
+        {
+            StopEngine();
+        }
+    }
+
+    private void ArmHoldMode()
+    {
+        if (_recorder.IsRecording)
+        {
+            StopRecording();
+        }
+
+        // The clicker hotkey is the explicit activation step. Stop any other
+        // engine mode before arming so a physical hold cannot overlap it.
+        if (_engine.IsRunning)
+        {
+            StopEngine();
+        }
+
+        _holdModeArmed = true;
+        _holdMonitor.TriggerButton = GetSelectedMouseButton();
+        _holdMonitor.Enabled = true;
+        UpdateEngineButtons();
+        UpdateStatusLabel();
+    }
+
+    private void DisarmHoldMode()
+    {
+        _holdModeArmed = false;
+        _holdMonitor.Enabled = false;
+
+        if (_engine.IsRunning && _engineMode == EngineMode.Foreground)
+        {
+            StopEngine();
+        }
+        else
+        {
+            UpdateEngineButtons();
+            UpdateStatusLabel();
+        }
+    }
 
     private void StartForeground()
     {
@@ -604,10 +708,18 @@ public sealed class MainForm : Form
         bool holdModeOn = _chkHoldMode.Checked;
         bool running = _engine.IsRunning;
 
-        _btnStart.Enabled = !holdModeOn && !(running && _engineMode == EngineMode.Foreground);
-        _btnStop.Enabled = !holdModeOn && running && _engineMode == EngineMode.Foreground;
+        if (holdModeOn)
+        {
+            _btnStart.Enabled = !_holdModeArmed;
+            _btnStop.Enabled = _holdModeArmed;
+        }
+        else
+        {
+            _btnStart.Enabled = !(running && _engineMode == EngineMode.Foreground);
+            _btnStop.Enabled = running && _engineMode == EngineMode.Foreground;
+        }
 
-        _btnStartBackground.Enabled = !(running && _engineMode == EngineMode.Background);
+        _btnStartBackground.Enabled = !_holdModeArmed && !(running && _engineMode == EngineMode.Background);
         _btnStopBackground.Enabled = running && _engineMode == EngineMode.Background;
     }
 
@@ -639,6 +751,10 @@ public sealed class MainForm : Form
         {
             _lblState.Text = $"Clicking… ({_engine.ClicksPerformed})";
         }
+        else if (_holdModeArmed)
+        {
+            _lblState.Text = "Hold mode armed";
+        }
         else
         {
             _lblState.Text = "Idle";
@@ -647,8 +763,13 @@ public sealed class MainForm : Form
 
     private void UpdateButtonLabels()
     {
-        _btnStart.Text = $"Start ({_settings.ToggleClickerHotkey.ToDisplayString()})";
-        _btnStop.Text = $"Stop ({_settings.ToggleClickerHotkey.ToDisplayString()})";
+        string clickerHotkey = _settings.ToggleClickerHotkey.ToDisplayString();
+        _btnStart.Text = _chkHoldMode.Checked
+            ? $"Arm hold mode ({clickerHotkey})"
+            : $"Start ({clickerHotkey})";
+        _btnStop.Text = _chkHoldMode.Checked
+            ? $"Disarm hold mode ({clickerHotkey})"
+            : $"Stop ({clickerHotkey})";
         _btnRecordToggle.Text = RecordButtonLabel();
         _btnPlayToggle.Text = PlayButtonLabel();
     }
@@ -663,8 +784,9 @@ public sealed class MainForm : Form
 
     private void UpdateStatusHotkeyLabel()
     {
+        string clickerAction = _chkHoldMode.Checked ? "arm/disarm hold" : "start/stop";
         _lblHotkeyReminder.Text =
-            $"{_settings.ToggleClickerHotkey.ToDisplayString()} start/stop   " +
+            $"{_settings.ToggleClickerHotkey.ToDisplayString()} {clickerAction}   " +
             $"{_settings.ToggleRecordHotkey.ToDisplayString()} record   " +
             $"{_settings.TogglePlaybackHotkey.ToDisplayString()} play";
     }
@@ -729,8 +851,9 @@ public sealed class MainForm : Form
 
         // Hold mode is applied last since its CheckedChanged handler reads the trigger button.
         _holdMonitor.TriggerButton = GetSelectedMouseButton();
+        _holdModeArmed = false;
         _chkHoldMode.Checked = s.HoldClickMode;
-        _holdMonitor.Enabled = s.HoldClickMode;
+        _holdMonitor.Enabled = false;
     }
 
     private void SaveControlsToSettings()

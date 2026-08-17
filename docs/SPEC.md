@@ -333,14 +333,14 @@ public static string GetWindowClass(IntPtr hWnd);
 
 ## UI spec (MainForm + controls)
 
-Follow standard WinForms look; clean, compact, resizable-off (FixedSingle), ~540x460. `Segoe UI 9pt`. App icon optional. StatusStrip at bottom: state label ("Idle" / "Clicking… (n)" / "Recording… (n events)" / "Playing…") + hotkey reminder label.
+Follow standard WinForms look; clean, compact, resizable, ~540x460 minimum client area. `Segoe UI 9pt`. App icon optional. StatusStrip at bottom: state label ("Idle" / "Clicking… (n)" / "Recording… (n events)" / "Playing…" / "Hold mode armed") + hotkey reminder label.
 
 **Tab 1 — Autoclick**
 - GroupBox "Click interval": 4 NumericUpDown (Hours 0-23, Mins 0-59, Secs 0-59, Ms 0-9999) + CheckBox "Random offset ±" + NumericUpDown ms (0-60000).
 - GroupBox "Click options": ComboBox Mouse button (Left/Right/Middle), ComboBox Click type (Single/Double), CheckBox "Hold mode — autoclick while the trigger mouse button is physically held".
 - GroupBox "Click repeat": RadioButton "Repeat until stopped", RadioButton "Repeat" + NumericUpDown (1-1000000) "times".
 - GroupBox "Cursor position": RadioButton "Current position", RadioButton "Fixed" + X/Y NumericUpDown (-32768..32767) + Button "Pick location" (opens PickLocationOverlay; fills X/Y; selects Fixed).
-- Big Start button + Stop button (only one enabled at a time), each showing hotkey suffix, e.g. "Start (F6)".
+- Big Start button + Stop button (only one enabled at a time), each showing hotkey suffix, e.g. "Start (F6)". When hold mode is selected, these become "Arm hold mode" / "Disarm hold mode".
 
 **Tab 2 — Record & Playback**
 - Buttons: "● Record (F7)" toggle, event-count label.
@@ -364,8 +364,8 @@ Follow standard WinForms look; clean, compact, resizable-off (FixedSingle), ~540
 - Tab pages support scrolling as a fallback for display scaling or work areas that cannot show the full layout.
 
 **Wiring rules**
-- One shared `ClickEngine`. Hotkey "toggle-clicker": if engine running → Stop; else start with ForegroundTarget (Tab 1 settings). Background Start button uses `MultiTarget`. Starting one while the other runs: Stop first, then start new.
-- Hold mode: when checkbox on, HoldClickMonitor.Enabled = true with TriggerButton = selected click button; HoldStarted → engine.Start (foreground), HoldEnded → engine.Stop. Start/Stop buttons disabled while hold mode is on (label explains).
+- One shared `ClickEngine`. Hotkey "toggle-clicker" starts/stops the foreground engine in normal mode; in hold mode it arms/disarms the hold monitor. Background Start button uses `MultiTarget`. Starting one while the other runs: Stop first, then start new.
+- Hold mode: the checkbox selects hold mode but does not enable the monitor. The clicker toggle hotkey (or the matching Start button) arms/disarms it; while armed, HoldClickMonitor.Enabled = true with TriggerButton = selected click button, HoldStarted → engine.Start (foreground), and HoldEnded → engine.Stop. The status strip shows "Hold mode armed" while waiting for the physical trigger button.
 - Record toggle: Recorder.Start / StopAndGet → keep script in memory, update count label. Pass toggle-hotkey VKs (main key + used modifier VKs) as IgnoreKeys.
 - Playback toggle: Player.Start(currentScript, speed, repeat) / Stop. Also stop recording before playing; stop playback before recording; never both.
 - All engine/player events marshaled with `BeginInvoke` before touching controls.
@@ -387,7 +387,7 @@ Follow standard WinForms look; clean, compact, resizable-off (FixedSingle), ~540
 1. Start/stop clicking via button and via customizable hotkey (incl. combos like Ctrl+Shift+F6) while another app is focused.
 2. Interval math correct across h/m/s/ms; random offset varies intervals; 10ms interval sustains >50 cps.
 3. Left/right/middle, single/double clicks land; repeat count stops exactly at N; fixed-position mode clicks at picked point.
-4. Hold mode: hold trigger → rapid clicks, release → stops; no feedback loop.
+4. Hold mode: select hold mode without starting it; clicker hotkey arms it; hold trigger → rapid clicks, release → stops; clicker hotkey disarms it; no feedback loop.
 5. Record mouse+keyboard, replay at 0.5x/1x/2x with faithful positions/timing; repeat count & infinite; hotkeys don't leak into recording.
 6. Background target picked with highlight overlay; clicks land in unfocused window (test on Notepad/Paint); multi-target clicks all enabled rows each tick.
 7. Settings and hotkeys persist across restart. No crashes on window-gone targets, empty macro play, hotkey conflicts.
