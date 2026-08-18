@@ -95,6 +95,16 @@ public sealed class MainForm : Form
     private readonly CheckBox _chkAlwaysOnTop = new() { Text = "Always on top", AutoSize = true };
     private readonly LinkLabel _lnkGithub = new() { Text = "OpenClick on GitHub", AutoSize = true };
 
+    // Each tab was originally laid out for the default window size. Preserve that
+    // design at its minimum size, then scale its contained controls as the user
+    // gives the window more room instead of leaving a small fixed layout in the
+    // top-left corner.
+    private readonly Dictionary<Control, ResponsiveLayoutMetrics> _responsiveLayout = new();
+    private readonly Dictionary<TabPage, Size> _responsiveTabSizes = new();
+    private readonly Dictionary<ListView, int[]> _responsiveListViewColumns = new();
+    private readonly Dictionary<Control, Font> _responsiveFonts = new();
+    private bool _responsiveLayoutCaptured;
+
     public MainForm()
     {
         Text = "OpenClick";
@@ -121,6 +131,9 @@ public sealed class MainForm : Form
 
         Controls.Add(_tabControl);
         Controls.Add(_statusStrip);
+
+        Shown += (_, _) => CaptureResponsiveLayout();
+        Resize += (_, _) => ApplyResponsiveLayout();
 
         WireCoreEvents();
         WireControlEvents();
@@ -307,6 +320,135 @@ public sealed class MainForm : Form
             lblClicker, _hkClicker, lblRecord, _hkRecord, lblPlayback, _hkPlayback, _chkAlwaysOnTop, _lnkGithub,
         });
     }
+
+    // ================================================================
+    // Responsive window layout
+    // ================================================================
+
+    private void CaptureResponsiveLayout()
+    {
+        if (_responsiveLayoutCaptured)
+        {
+            return;
+        }
+
+        foreach (TabPage tab in _tabControl.TabPages)
+        {
+            _responsiveTabSizes.Add(tab, tab.ClientSize);
+            CaptureResponsiveLayout(tab);
+        }
+
+        _responsiveLayoutCaptured = true;
+        ApplyResponsiveLayout();
+    }
+
+    private void CaptureResponsiveLayout(Control parent)
+    {
+        foreach (Control child in parent.Controls)
+        {
+            _responsiveLayout.Add(child, new ResponsiveLayoutMetrics(
+                child.Bounds,
+                child.Font,
+                child.AutoSize && child is Label or LinkLabel or CheckBox or RadioButton));
+            if (child is ListView listView)
+            {
+                _responsiveListViewColumns.Add(listView, listView.Columns.Cast<ColumnHeader>().Select(column => column.Width).ToArray());
+            }
+
+            CaptureResponsiveLayout(child);
+        }
+    }
+
+    private void ApplyResponsiveLayout()
+    {
+        if (!_responsiveLayoutCaptured)
+        {
+            return;
+        }
+
+        foreach ((TabPage tab, Size baseSize) in _responsiveTabSizes)
+        {
+            if (baseSize.Width <= 0 || baseSize.Height <= 0)
+            {
+                continue;
+            }
+
+            float horizontalScale = Math.Max(1f, tab.ClientSize.Width / (float)baseSize.Width);
+            float verticalScale = Math.Max(1f, tab.ClientSize.Height / (float)baseSize.Height);
+            float fontScale = Math.Min(horizontalScale, verticalScale);
+
+            tab.SuspendLayout();
+            ApplyResponsiveLayout(tab, horizontalScale, verticalScale, fontScale);
+            tab.ResumeLayout(performLayout: false);
+        }
+    }
+
+    private void ApplyResponsiveLayout(Control parent, float horizontalScale, float verticalScale, float fontScale)
+    {
+        foreach (Control child in parent.Controls)
+        {
+            ResponsiveLayoutMetrics metrics = _responsiveLayout[child];
+            child.Location = new Point(
+                (int)Math.Round(metrics.Bounds.X * horizontalScale),
+                (int)Math.Round(metrics.Bounds.Y * verticalScale));
+
+            if (!metrics.AutoSize)
+            {
+                child.Size = new Size(
+                    Math.Max(1, (int)Math.Round(metrics.Bounds.Width * horizontalScale)),
+                    Math.Max(1, (int)Math.Round(metrics.Bounds.Height * verticalScale)));
+            }
+
+            ApplyResponsiveFont(child, metrics.Font, fontScale);
+            if (child is ListView listView && _responsiveListViewColumns.TryGetValue(listView, out int[]? columnWidths))
+            {
+                for (int i = 0; i < columnWidths.Length; i++)
+                {
+                    listView.Columns[i].Width = Math.Max(1, (int)Math.Round(columnWidths[i] * horizontalScale));
+                }
+            }
+
+            ApplyResponsiveLayout(child, horizontalScale, verticalScale, fontScale);
+        }
+    }
+
+    private void ApplyResponsiveFont(Control control, Font baseFont, float scale)
+    {
+        if (Math.Abs(scale - 1f) < 0.01f)
+        {
+            if (_responsiveFonts.Remove(control, out Font? scaledFont))
+            {
+                control.Font = baseFont;
+                scaledFont.Dispose();
+            }
+
+            return;
+        }
+
+        float size = Math.Max(1f, baseFont.SizeInPoints * scale);
+        if (Math.Abs(control.Font.SizeInPoints - size) < 0.01f && control.Font.Style == baseFont.Style)
+        {
+            return;
+        }
+
+        Font resizedFont = new(baseFont.FontFamily, size, baseFont.Style, GraphicsUnit.Point);
+        Font? previousFont = _responsiveFonts.GetValueOrDefault(control);
+        control.Font = resizedFont;
+        _responsiveFonts[control] = resizedFont;
+        previousFont?.Dispose();
+    }
+
+    private void DisposeResponsiveFonts()
+    {
+        foreach (Font font in _responsiveFonts.Values)
+        {
+            font.Dispose();
+        }
+
+        _responsiveFonts.Clear();
+    }
+
+    private readonly record struct ResponsiveLayoutMetrics(Rectangle Bounds, Font Font, bool AutoSize);
 
     // ================================================================
     // Wiring
@@ -995,6 +1137,7 @@ public sealed class MainForm : Form
 
     private void OnMainFormClosed(object? sender, FormClosedEventArgs e)
     {
+        DisposeResponsiveFonts();
         _engine.Dispose();
         _player.Dispose();
         _recorder.Dispose();
