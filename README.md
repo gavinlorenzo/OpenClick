@@ -1,58 +1,49 @@
 # OpenClick
 
-A lightweight, free, open-source autoclicker for Windows.
+OpenClick is a free, open-source autoclicker for Windows.
 
 ## Features
 
-- **Flexible click interval** — hours / minutes / seconds / milliseconds, with an optional random offset to vary timing
-- **Any mouse button** — left, right, or middle
-- **Single or double click**
-- **Repeat control** — click N times, or keep going until stopped
-- **Position modes** — click at the current cursor position, or at a fixed point picked on screen
-- **Fully customizable global hotkeys** — start/stop from anywhere, with modifier combos (e.g. `Ctrl+Shift+F6`)
-- **Hold-to-click mode** — autoclicks while you physically hold the mouse button down
-- **Macro record & playback** — record mouse and keyboard, replay with a speed multiplier and repeat count
-- **Background clicking** — send clicks into unfocused windows via `PostMessage`, no focus stealing
-- **Multiclicking** — click several windows, or several points in one window, on every tick
-- **Resizable window** — enlarge the window when display scaling or a smaller laptop screen makes the default layout feel cramped
-- **Persistent settings** — everything is saved between runs
-- **Zero dependencies** — a single small executable, no installers, no runtimes to chase
+- Choose the interval, mouse button, click type, repeat count, and current or fixed cursor position.
+- Use global hotkeys, including modifier combinations, or arm hold mode to click while you hold the selected button.
+- Record mouse and keyboard input, then replay it at a chosen speed and repeat count.
+- Click one or more unfocused windows without bringing them to the front.
+- Keep settings between runs.
 
-## Getting started
+## Download or run
 
-Grab the latest build from [GitHub Releases](https://github.com/gavinlorenzo/OpenClick/releases), or build from source (requires the .NET 10 SDK on Windows):
+Download the current [Windows x64 release](https://github.com/gavinlorenzo/OpenClick/releases/latest), or build it from source on Windows with the .NET 10 SDK:
 
-```
+```powershell
 dotnet build
 dotnet run --project src/OpenClick
 ```
 
-## Building a release
+## Default hotkeys
 
-```
+| Key | Action |
+| --- | --- |
+| `F6` | Start or stop the clicker. In hold mode, arm or disarm it. |
+| `F7` | Start or stop recording. |
+| `F8` | Start or stop macro playback. |
+
+You can change these shortcuts in the Settings tab.
+
+## Background clicking and permissions
+
+Background clicks use Windows `PostMessage`. Programs that read direct hardware input, including many games, may ignore them. To click an application running as administrator, run OpenClick as administrator too.
+
+Autoclickers can trigger antivirus warnings. OpenClick's source is available here if you want to inspect or build it yourself.
+
+## Build a release
+
+```powershell
 dotnet publish src/OpenClick -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true
 ```
 
-## Hotkeys
+## For maintainers
 
-| Key | Action |
-|-----|--------|
-| `F6` | Toggle clicker |
-| `F7` | Toggle recording |
-| `F8` | Toggle playback |
-
-All hotkeys are rebindable in the **Settings** tab, including modifier combos like `Ctrl+Shift+F6`.
-
-## Limitations & notes
-
-- Background clicking uses `PostMessage`, so apps that read hardware input directly (many games, anything using raw input or DirectInput) will ignore it.
-- Clicking into apps running as administrator requires running OpenClick as administrator too.
-- Some antivirus tools flag autoclickers generically — the code is fully open here, so you can audit and build it yourself.
-- Hold-to-click and global hotkeys use low-level Windows hooks.
-
-## Architecture
-
-OpenClick is a single WinForms app targeting `net10.0-windows`, with all Win32 access done via P/Invoke — no external NuGet packages. See [docs/SPEC.md](docs/SPEC.md) for the full specification, threading model, and module layout.
+OpenClick is a WinForms application targeting `net10.0-windows`. It has no external NuGet packages and calls Windows APIs through P/Invoke. See [docs/SPEC.md](docs/SPEC.md) for the source map and runtime notes.
 
 ## License
 
